@@ -1,0 +1,15 @@
+# IDE & OS (repo root)
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local API / debug artifacts (curl tests in repo root)
+jp*.json
+sf*.json
+dep*.json
+sp*.json
+sites-search.json

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: transit-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - transit-network
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: transit-backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - transit-sqlite-data:/data
+      - transit-logs:/var/log/transit
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - SQLITE_PATH=/data/transit.db
+      - LOG_DIR=/var/log/transit
+      - JWT_SECRET=super_secret_key_change_me_in_production
+    depends_on:
+      - redis
+    networks:
+      - transit-network
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: transit-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - transit-network
+    restart: always
+
+volumes:
+  transit-sqlite-data:
+  transit-logs:
+
+networks:
+  transit-network:
+    driver: bridge
