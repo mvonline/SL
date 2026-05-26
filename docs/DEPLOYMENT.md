@@ -1,50 +1,57 @@
-# Deployment (GitHub Pages only)
+# Deployment (GitHub Pages + Backend)
 
-SthlmTransit runs entirely in the browser on **GitHub Pages** — no backend server required.
+GitHub hosts the **frontend** only. The **backend** runs on a cloud host (Render recommended) because it needs Node.js, SQLite, and Redis.
 
-| Piece | Where |
-|-------|--------|
-| Frontend | GitHub Pages (e.g. [https://vafa.one/SL/](https://vafa.one/SL/)) |
-| Station database | `frontend/public/stations-map-fallback.json` (offline, committed) |
-| Live data | Browser → [SL Transport API](https://transport.integration.sl.se/v1), [SL Journey Planner](https://journeyplanner.integration.sl.se/v2), OSRM |
+## Architecture
 
-## Deploy frontend
+| Component | Host | URL pattern |
+|-----------|------|-------------|
+| Frontend | GitHub Pages | `https://<user>.github.io/<repo>/` |
+| Backend API | Render (or GHCR + your server) | `https://sthlmtransit-api.onrender.com` |
+| Redis | Render managed Redis | internal |
+
+## 1. Deploy backend (Render)
+
+1. Push this repo to GitHub.
+2. Go to [render.com](https://render.com) → **New** → **Blueprint**.
+3. Connect the repository; Render reads `render.yaml`.
+4. After deploy, open the **sthlmtransit-api** service and copy its URL (e.g. `https://sthlmtransit-api.onrender.com`).
+5. In Render **Environment**, set:
+   - `FRONTEND_URL` = `https://<your-github-username>.github.io/<repo-name>/` (no trailing path after repo name unless you use one)
+
+Free tier: the API may sleep after inactivity; first request can take ~30s.
+
+### Optional: GHCR Docker image
+
+Workflow `.github/workflows/publish-backend-image.yml` publishes:
+
+`ghcr.io/<owner>/<repo>/backend:latest`
+
+Pull and run with Redis URL and env vars from `render.yaml`.
+
+## 2. Deploy frontend (GitHub Pages)
 
 1. Repo **Settings** → **Pages** → **Source**: **GitHub Actions**.
-2. Push to `main` / `master` — workflow **Deploy GitHub Pages** runs automatically.
-3. Custom domain (optional): point `vafa.one` at GitHub Pages; build uses `VITE_BASE_URL=/SL/` when the repo is named `SL`.
+2. Push to `main` / `master` — workflow `Deploy GitHub Pages` runs automatically.
+3. **Settings** → **Secrets and variables** → **Actions** → **Variables** (required for live API):
+   - Name: `VITE_API_BASE`
+   - Value: `https://sthlmtransit-api.onrender.com/api`  
+     (use your real Render URL — must end with `/api`)
 
-Production builds set `VITE_STATIC_MODE=true` so the app never calls a BFF.
+4. Re-run **Actions → Deploy GitHub Pages** (or push a commit).
 
-## Refresh offline stations
+Without `VITE_API_BASE`, the site still shows **offline stations** on the map but routing, departures, and login need the backend.
 
-From `frontend/` when the full monorepo is present:
-
-```bash
-npm run generate:fallback-stations
-```
-
-Commit the updated `public/stations-map-fallback.json`.
-
-## Local development
-
-**Static (same as Pages):**
-
-```bash
-cd frontend
-npm install
-npm run dev:static
-```
-
-**With optional backend** (docker compose + BFF):
+## 3. Local development
 
 ```bash
 docker compose up
-cd frontend && npm run dev
 ```
 
-Set `VITE_STATIC_MODE=false` and `VITE_API_BASE=http://localhost:3000/api` to use the backend locally.
+- Frontend: http://localhost:5173  
+- Backend: http://localhost:3000/api  
 
-## Optional backend (Render / GHCR)
+## 4. Verify
 
-The `backend/` folder and `render.yaml` are optional for self-hosting or local dev. They are **not** required for GitHub Pages.
+- Backend health: `https://<api-host>/health`
+- Pages app loads map; log in and run **Admin sync** once to seed stations.

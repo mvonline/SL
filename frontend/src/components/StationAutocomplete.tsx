@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiClient } from '../services/api.js';
-import { isStaticMode } from '../config/staticMode.js';
 import type { Station } from '../types/index.js';
 import { asText } from '../utils/safeText.js';
 
@@ -52,7 +51,7 @@ export default function StationAutocomplete({
   const { data: searchRes, isFetching: isSearching } = useQuery({
     queryKey: ['stationSearch', debouncedQuery],
     queryFn: () => ApiClient.searchStations(debouncedQuery),
-    enabled: !isStaticMode && debouncedQuery.length >= 1,
+    enabled: debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
 

@@ -1,28 +1,17 @@
 import type { Station } from '../types/index.js';
-import { isStaticMode } from '../config/staticMode.js';
 import { getApiBase, isApiConfigured } from '../config/apiBase.js';
-import {
-  getMapStations,
-  loadStationsDb,
-  searchStationsLocal,
-} from './stationsDb.js';
-import { fetchLiveDepartures } from './slTransportApi.js';
-import { resolveDeparturesSiteId } from './journeyPlanner.js';
-import { getRoute as getStaticRoute } from './staticRouting.js';
 
-type ApiResult<T> = {
-  status: 'success' | 'error';
-  source?: string;
-  data?: T;
-  warnings?: string[];
-  message?: string;
-};
+const API_BASE = getApiBase();
 
-async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResult<T>> {
+/**
+ * Custom wrapper around fetch to append JWT tokens and handle standard parsing.
+ */
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<{ status: 'success' | 'error'; source?: string; data?: T; warnings?: string[]; message?: string }> {
   if (!isApiConfigured()) {
     return {
       status: 'error',
-      message: 'Backend API not configured.',
+      message:
+        'API URL not configured. Set GitHub variable VITE_API_BASE to your backend (e.g. https://sthlmtransit-api.onrender.com/api).',
     };
   }
 
@@ -34,42 +23,43 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   } as Record<string, string>;
 
   try {
-    const response = await fetch(`${getApiBase()}${endpoint}`, { ...options, headers });
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
     const parsed = await response.json();
     if (!response.ok) {
       throw new Error(parsed.message || `API error with status: ${response.status}`);
     }
+
     return parsed;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Network communication failure.';
+  } catch (err: any) {
     console.error(`Fetch failure on endpoint ${endpoint}:`, err);
-    return { status: 'error', message };
+    return {
+      status: 'error',
+      message: err.message || 'Network communication failure.'
+    };
   }
 }
 
 export const ApiClient = {
+  // 1. Authentication
   async signup(username: string, password: string) {
-    if (isStaticMode) return { status: 'error' as const, message: 'Auth not available in static mode.' };
     return apiFetch<{ token: string; username: string }>('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password })
     });
   },
 
   async login(username: string, password: string) {
-    if (isStaticMode) return { status: 'error' as const, message: 'Auth not available in static mode.' };
     return apiFetch<{ token: string; username: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password })
     });
   },
 
   async logout() {
-    if (isStaticMode) {
-      localStorage.removeItem('transit_token');
-      localStorage.removeItem('transit_username');
-      return { status: 'success' as const };
-    }
     const result = await apiFetch<void>('/auth/logout', { method: 'POST' });
     localStorage.removeItem('transit_token');
     localStorage.removeItem('transit_username');
@@ -77,54 +67,29 @@ export const ApiClient = {
   },
 
   async searchStations(q: string) {
-    if (isStaticMode) {
-      const all = await loadStationsDb();
-      return { status: 'success' as const, data: searchStationsLocal(q, all) };
-    }
     return apiFetch<Station[]>(`/stations/search?q=${encodeURIComponent(q)}`);
   },
 
-  async getStations() {
-    if (isStaticMode) {
-      const all = await loadStationsDb();
-      return { status: 'success' as const, data: all };
+  // 2. Stations Directory
+  async getStations(bounds?: { minLat: number; maxLat: number; minLon: number; maxLon: number }) {
+    let url = '/stations';
+    if (bounds) {
+      url += `?minLat=${bounds.minLat}&maxLat=${bounds.maxLat}&minLon=${bounds.minLon}&maxLon=${bounds.maxLon}`;
     }
-    return apiFetch<Station[]>('/stations');
+    return apiFetch<any[]>(url);
   },
 
+  /** Map markers only — excludes bus stops for performance */
   async getMapStations() {
-    if (isStaticMode) {
-      const all = await loadStationsDb();
-      return { status: 'success' as const, data: getMapStations(all) };
-    }
     return apiFetch<Station[]>('/stations?forMap=true');
   },
 
-  async getLiveDepartures(stationId: string) {
-    if (isStaticMode) {
-      try {
-        const all = await loadStationsDb();
-        const station = all.find((s) => s.id === stationId);
-        const siteId = await resolveDeparturesSiteId(
-          stationId,
-          station
-            ? { name: station.name, latitude: station.latitude, longitude: station.longitude }
-            : undefined
-        );
-        if (!siteId) {
-          return { status: 'error' as const, message: 'Could not resolve station for departures.' };
-        }
-        return await fetchLiveDepartures(siteId);
-      } catch (err: unknown) {
-        return {
-          status: 'error' as const,
-          message: err instanceof Error ? err.message : 'Departures unavailable.',
-        };
-      }
-    }
-    return apiFetch<unknown>(`/departures/${stationId}`);
+  // 3. Live Departures (triggers dual-key caching and graceful circuit breakers)
+  async getLiveDepartures(siteId: string) {
+    return apiFetch<any>(`/departures/${siteId}`);
   },
 
+  // 4. Multimodal Routing Planner
   async getRoute(
     fromLat: number,
     fromLon: number,
@@ -134,44 +99,19 @@ export const ApiClient = {
     fromName?: string,
     toName?: string
   ) {
-    if (isStaticMode) {
-      try {
-        const data = await getStaticRoute(
-          fromLat,
-          fromLon,
-          toLat,
-          toLon,
-          mode,
-          fromName,
-          toName
-        );
-        const { status: _ignored, ...route } = data;
-        return { status: 'success' as const, ...route };
-      } catch (err: unknown) {
-        return {
-          status: 'error' as const,
-          message: err instanceof Error ? err.message : 'Routing failed.',
-        };
-      }
-    }
     let url = `/routing?fromLat=${fromLat}&fromLon=${fromLon}&toLat=${toLat}&toLon=${toLon}&mode=${mode}`;
     if (fromName) url += `&fromName=${encodeURIComponent(fromName)}`;
     if (toName) url += `&toName=${encodeURIComponent(toName)}`;
-    return apiFetch<unknown>(url);
+    return apiFetch<any>(url);
   },
 
+  // 5. Admin Sync Trigger
   async triggerAdminSync() {
-    if (isStaticMode) {
-      return {
-        status: 'success' as const,
-        data: { message: 'Using offline station database.', count: (await loadStationsDb()).length },
-      };
-    }
     return apiFetch<{ message: string; count: number }>('/admin/sync', { method: 'POST' });
   },
 
+  // 6. Admin Cost Analytics Aggregator
   async getAdminStats(days = 7) {
-    if (isStaticMode) return { status: 'error' as const, message: 'Stats not available in static mode.' };
-    return apiFetch<unknown>(`/admin/stats?days=${days}`);
-  },
+    return apiFetch<any>(`/admin/stats?days=${days}`);
+  }
 };

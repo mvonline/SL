@@ -1,4 +1,7 @@
-# Static frontend for GitHub Pages — offline stations + browser SL/OSRM APIs (see docs/DEPLOYMENT.md)
+# Build the React/Vite frontend and publish to GitHub Pages.
+# Backend is NOT on GitHub — deploy via render.yaml (see docs/DEPLOYMENT.md).
+# Set repo variable VITE_API_BASE = https://<your-api-host>/api
+# Enable: Settings → Pages → Source: GitHub Actions
 
 name: Deploy GitHub Pages
 
@@ -40,8 +43,10 @@ jobs:
       - name: Build for GitHub Pages
         working-directory: frontend
         env:
+          # Project site: https://<user>.github.io/<repo>/
           VITE_BASE_URL: /${{ github.event.repository.name }}/
-          VITE_STATIC_MODE: 'true'
+          # Optional: set repository variable VITE_API_BASE (e.g. https://api.example.com/api)
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
         run: |
           npm run build
           cp dist/index.html dist/404.html
