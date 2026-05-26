@@ -27,7 +27,7 @@ Free tier: the API may sleep after inactivity; first request can take ~30s.
 
 Workflow `.github/workflows/publish-backend-image.yml` publishes:
 
-`ghcr.io/<owner>/<repo>/backend:latest`
+`ghcr.io/<owner>/<repo>/backend:latest` (image path is lowercased, e.g. `ghcr.io/mvonline/sl/backend:latest` for repo `SL`)
 
 Pull and run with Redis URL and env vars from `render.yaml`.
 
