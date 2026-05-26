@@ -17,7 +17,8 @@ build/
 *.db-journal
 *.db-wal
 *.db-shm
-data/
+# Runtime SQLite directory at repo backend root only (not src/data/)
+/data/
 
 # Logs
 logs/
