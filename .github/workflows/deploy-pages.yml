@@ -1,7 +1,6 @@
-# Build the React/Vite frontend and publish to GitHub Pages.
-# Backend is NOT on GitHub — deploy via render.yaml (see docs/DEPLOYMENT.md).
-# Set repo variable VITE_API_BASE = https://<your-api-host>/api
-# Enable: Settings → Pages → Source: GitHub Actions
+# Static frontend for GitHub Pages (see docs/DEPLOYMENT.md).
+# Custom domain at site root (e.g. map.vafa.one): set repo variable VITE_BASE_URL = /
+# Default github.io project URL: /SL/ when repo is named SL
 
 name: Deploy GitHub Pages
 
@@ -43,10 +42,9 @@ jobs:
       - name: Build for GitHub Pages
         working-directory: frontend
         env:
-          # Project site: https://<user>.github.io/<repo>/
-          VITE_BASE_URL: /${{ github.event.repository.name }}/
-          # Optional: set repository variable VITE_API_BASE (e.g. https://api.example.com/api)
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          # Override in repo Variables when using a custom domain at root (map.vafa.one → /)
+          VITE_BASE_URL: ${{ vars.VITE_BASE_URL || format('/{0}/', github.event.repository.name) }}
+          VITE_STATIC_MODE: 'true'
         run: |
           npm run build
           cp dist/index.html dist/404.html

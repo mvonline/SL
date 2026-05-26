@@ -1,57 +1,66 @@
-# Deployment (GitHub Pages + Backend)
+# Deployment (GitHub Pages)
 
-GitHub hosts the **frontend** only. The **backend** runs on a cloud host (Render recommended) because it needs Node.js, SQLite, and Redis.
+The live app is a **static** React build: offline stations + browser calls to SL/OSRM APIs. No backend required for [https://map.vafa.one/](https://map.vafa.one/).
 
-## Architecture
+## Why local and production HTML look different
 
-| Component | Host | URL pattern |
-|-----------|------|-------------|
-| Frontend | GitHub Pages | `https://<user>.github.io/<repo>/` |
-| Backend API | Render (or GHCR + your server) | `https://sthlmtransit-api.onrender.com` |
-| Redis | Render managed Redis | internal |
+| | Local (`npm run dev`) | Production (GitHub Pages) |
+|--|----------------------|---------------------------|
+| JS | `/src/main.tsx` + Vite dev server | `/assets/index-*.js` (bundled) |
+| Base path | `/` | Set at build time (`VITE_BASE_URL`) |
 
-## 1. Deploy backend (Render)
+That difference is normal. A **blank page** on the web almost always means the **base path is wrong** (browser 404 on JS/CSS).
 
-1. Push this repo to GitHub.
-2. Go to [render.com](https://render.com) → **New** → **Blueprint**.
-3. Connect the repository; Render reads `render.yaml`.
-4. After deploy, open the **sthlmtransit-api** service and copy its URL (e.g. `https://sthlmtransit-api.onrender.com`).
-5. In Render **Environment**, set:
-   - `FRONTEND_URL` = `https://<your-github-username>.github.io/<repo-name>/` (no trailing path after repo name unless you use one)
+## Custom domain vs github.io
 
-Free tier: the API may sleep after inactivity; first request can take ~30s.
+GitHub serves a **project** site on a custom domain at the **root**:
 
-### Optional: GHCR Docker image
+- `https://map.vafa.one/` → assets must be `/assets/...` → **`VITE_BASE_URL=/`**
+- `https://<user>.github.io/SL/` → assets must be `/SL/assets/...` → **`VITE_BASE_URL=/SL/`**
 
-Workflow `.github/workflows/publish-backend-image.yml` publishes:
+If the build uses `/SL/` but you open `map.vafa.one`, the HTML loads but `/SL/assets/*.js` returns **404** and the app stays blank.
 
-`ghcr.io/<owner>/<repo>/backend:latest`
+### Fix for map.vafa.one
 
-Pull and run with Redis URL and env vars from `render.yaml`.
+1. Repo **Settings** → **Secrets and variables** → **Actions** → **Variables**
+2. Add **`VITE_BASE_URL`** = `/` (just a slash)
+3. Re-run **Deploy GitHub Pages** (or push a commit)
 
-## 2. Deploy frontend (GitHub Pages)
+After deploy, view source should show:
 
-1. Repo **Settings** → **Pages** → **Source**: **GitHub Actions**.
-2. Push to `main` / `master` — workflow `Deploy GitHub Pages` runs automatically.
-3. **Settings** → **Secrets and variables** → **Actions** → **Variables** (required for live API):
-   - Name: `VITE_API_BASE`
-   - Value: `https://sthlmtransit-api.onrender.com/api`  
-     (use your real Render URL — must end with `/api`)
-
-4. Re-run **Actions → Deploy GitHub Pages** (or push a commit).
-
-Without `VITE_API_BASE`, the site still shows **offline stations** on the map but routing, departures, and login need the backend.
-
-## 3. Local development
-
-```bash
-docker compose up
+```html
+<script src="/assets/index-….js"></script>
 ```
 
-- Frontend: http://localhost:5173  
-- Backend: http://localhost:3000/api  
+not `/SL/assets/…`.
 
-## 4. Verify
+`frontend/public/CNAME` contains `map.vafa.one` so GitHub Pages keeps the custom domain.
 
-- Backend health: `https://<api-host>/health`
-- Pages app loads map; log in and run **Admin sync** once to seed stations.
+## Deploy frontend
+
+1. **Settings** → **Pages** → **Source**: **GitHub Actions**
+2. Push to `main` / `master`
+3. Optional variable: `VITE_BASE_URL` — `/` for custom domain root, or omit for default `/<repo-name>/`
+
+## Local development
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173
+
+## Refresh offline stations
+
+```bash
+cd frontend
+npm run generate:fallback-stations
+```
+
+Commit `public/stations-map-fallback.json`.
+
+## Optional backend
+
+`backend/` and Docker/GHCR workflows are only for self-hosting or local `docker compose` — not needed for GitHub Pages.
