@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiClient } from './services/api.js';
-import { Station, Departure, RouteLeg, RouteInstruction } from './types/index.js';
+import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
 import { asText } from './utils/safeText.js';
-import Map from './components/Map.tsx';
+import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
+import { TripStepIcon, VEHICLE_LABELS } from './components/TripStepIcon.tsx';
 import { 
   Navigation, Train, Bus, Anchor, LogOut, RefreshCw, BarChart3, 
-  MapPin, AlertTriangle, User, ShieldAlert, CheckCircle, ArrowRight,
+  MapPin, AlertTriangle, User, ShieldAlert, CheckCircle,
   TrendingUp, Clock, Server
 } from 'lucide-react';
 
@@ -30,6 +31,7 @@ export default function App() {
   const [routeTo, setRouteTo] = useState<Station | null>(null);
   const [travelMode, setTravelMode] = useState<'walking' | 'driving' | 'transit'>('transit');
   const [routingError, setRoutingError] = useState<string | null>(null);
+  const [routePickMode, setRoutePickMode] = useState<RoutePickMode>(null);
 
   // Sync animation state
   const [syncSuccess, setSyncSuccess] = useState(false);
@@ -81,6 +83,13 @@ export default function App() {
     enabled: !!token,
     staleTime: 60_000,
   });
+
+  const handlePickStation = (station: Station, mode: 'from' | 'to') => {
+    if (mode === 'from') setRouteFrom(station);
+    else setRouteTo(station);
+    setRoutePickMode(null);
+    setSelectedStation(station);
+  };
 
   const allStations =
     allStationsRes?.status === 'success' ? (allStationsRes.data as Station[]) : [];
@@ -163,11 +172,19 @@ export default function App() {
     const instructions: RouteInstruction[] = Array.isArray(instructionsRaw)
       ? instructionsRaw.map((item) => {
           const step = item as Record<string, unknown>;
+          const vehicleRaw = step.vehicle;
+          const vehicle =
+            typeof vehicleRaw === 'string' &&
+            ['WALK', 'METRO', 'TRAIN', 'BUS', 'FERRY', 'TRAM', 'TRANSFER'].includes(vehicleRaw)
+              ? (vehicleRaw as RouteVehicleType)
+              : undefined;
           return {
             text: asText(step.text, 'Continue'),
             durationMin: typeof step.durationMin === 'number' ? step.durationMin : undefined,
             line: step.line != null && step.line !== '' ? asText(step.line) : undefined,
             kind: step.kind as RouteInstruction['kind'],
+            vehicle,
+            color: typeof step.color === 'string' ? step.color : undefined,
           };
         })
       : [];
@@ -324,8 +341,38 @@ export default function App() {
               
               <div className="space-y-3">
                 <p className="text-[10px] text-slate-500 leading-relaxed">
-                  Start typing a station name for autocomplete, or pick a stop on the map / departures panel.
+                  Type a station name, use <strong className="text-slate-400">Pick on map</strong>, or click a marker
+                  while a layer is visible.
                 </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRoutePickMode((m) => (m === 'from' ? null : 'from'))
+                    }
+                    className={`py-1.5 rounded-lg text-[10px] font-medium border transition ${
+                      routePickMode === 'from'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-emerald-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {routePickMode === 'from' ? 'Cancel start pick' : 'Pick start on map'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRoutePickMode((m) => (m === 'to' ? null : 'to'))
+                    }
+                    className={`py-1.5 rounded-lg text-[10px] font-medium border transition ${
+                      routePickMode === 'to'
+                        ? 'bg-red-500/15 border-red-500 text-red-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {routePickMode === 'to' ? 'Cancel dest. pick' : 'Pick destination on map'}
+                  </button>
+                </div>
 
                 <StationAutocomplete
                   label="Start"
@@ -385,28 +432,46 @@ export default function App() {
                           : ''}
                       </span>
                     </div>
-                    {routingPlan.instructions.map((step, idx) => (
+                    {routingPlan.instructions.map((step, idx) => {
+                      const vehicle =
+                        step.vehicle ??
+                        (step.kind === 'walk'
+                          ? 'WALK'
+                          : step.kind === 'transfer'
+                            ? 'TRANSFER'
+                            : 'TRAIN');
+                      return (
                       <div
                         key={idx}
-                        className={`text-[11px] leading-normal flex items-start gap-1.5 ${
+                        className={`text-[11px] leading-normal flex items-start gap-2 ${
                           step.kind === 'transfer' ? 'text-amber-300' : 'text-slate-300'
                         }`}
                       >
-                        {step.line && step.kind !== 'transfer' ? (
-                          <span className="shrink-0 mt-0.5 px-1 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-200 max-w-[72px] truncate">
-                            {step.line}
+                        <div className="flex flex-col items-center shrink-0 w-9 gap-0.5">
+                          <TripStepIcon vehicle={vehicle} color={step.color} />
+                          <span className="text-[8px] font-semibold text-slate-500 uppercase tracking-wide">
+                            {VEHICLE_LABELS[vehicle]}
                           </span>
-                        ) : (
-                          <ArrowRight className="w-3 h-3 mt-0.5 text-brand-purple flex-shrink-0" />
-                        )}
-                        <div>
-                          {step.text}
-                          {step.durationMin != null && step.durationMin > 0 && (
-                            <span className="text-slate-500"> · {step.durationMin} min</span>
+                        </div>
+                        <div className="min-w-0 flex-grow">
+                          {step.line && step.kind !== 'transfer' && step.kind !== 'walk' && (
+                            <span
+                              className="inline-block mb-0.5 mr-1 px-1 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-200 max-w-[100px] truncate align-middle"
+                              style={step.color ? { borderLeft: `2px solid ${step.color}` } : undefined}
+                            >
+                              {step.line}
+                            </span>
                           )}
+                          <span>
+                            {step.text}
+                            {step.durationMin != null && step.durationMin > 0 && (
+                              <span className="text-slate-500"> · {step.durationMin} min</span>
+                            )}
+                          </span>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </div>
@@ -560,6 +625,11 @@ export default function App() {
           selectedStation={selectedStation}
           activeRouteLegs={activeLegs}
           activeRoutePoints={activePoints}
+          routeFrom={routeFrom}
+          routeTo={routeTo}
+          routePickMode={routePickMode}
+          onPickStation={handlePickStation}
+          pickStations={allStations}
         />
       </main>
 

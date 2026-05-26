@@ -31,12 +31,23 @@ export interface RouteLeg {
   geometry: [number, number][];
 }
 
+export type RouteVehicleType =
+  | 'WALK'
+  | 'METRO'
+  | 'TRAIN'
+  | 'BUS'
+  | 'FERRY'
+  | 'TRAM'
+  | 'TRANSFER';
+
 export interface RouteInstruction {
   text: string;
   durationMin?: number;
   distance?: number;
   line?: string;
   kind?: 'walk' | 'board' | 'ride' | 'transfer' | 'arrive';
+  vehicle?: RouteVehicleType;
+  color?: string;
 }
 
 export interface RouteResponse {

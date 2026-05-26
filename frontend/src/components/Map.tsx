@@ -14,6 +14,7 @@ import { ApiClient } from '../services/api.js';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Info, Layers } from 'lucide-react';
 import { groupStationsByName, stationNameKey } from '../utils/groupStationsByName.js';
+import { findNearestStation } from '../utils/findNearestStation.js';
 
 import 'leaflet.markercluster';
 
@@ -24,11 +25,18 @@ type MarkerClusterGroup = L.LayerGroup & {
 
 type StopType = Station['stop_type'];
 
+export type RoutePickMode = 'from' | 'to' | null;
+
 interface MapProps {
   onSelectStation: (station: Station) => void;
   selectedStation: Station | null;
   activeRouteLegs: RouteLeg[] | null;
   activeRoutePoints: [number, number][] | null;
+  routeFrom: Station | null;
+  routeTo: Station | null;
+  routePickMode: RoutePickMode;
+  onPickStation: (station: Station, mode: 'from' | 'to') => void;
+  pickStations: Station[];
 }
 
 const STOP_STYLE: Record<StopType, { color: string; char: string; label: string }> = {
@@ -40,8 +48,8 @@ const STOP_STYLE: Record<StopType, { color: string; char: string; label: string 
 
 const ALL_STOP_TYPES: StopType[] = ['METRO', 'TRAIN', 'BUS', 'FERRY'];
 
-/** Default map layers — rail only; bus omitted for performance */
-const DEFAULT_MAP_TYPES: StopType[] = ['METRO', 'TRAIN'];
+/** Default map layers — all off; user enables types in the legend */
+const DEFAULT_MAP_TYPES: StopType[] = [];
 
 function MapViewportController({
   onZoomChange,
@@ -90,7 +98,12 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function createStationMarker(station: Station, onSelect: (s: Station) => void): L.Marker {
+function createStationMarker(
+  station: Station,
+  onSelect: (s: Station) => void,
+  pickMode: RoutePickMode,
+  onPick: (s: Station, mode: 'from' | 'to') => void
+): L.Marker {
   const style = STOP_STYLE[station.stop_type] ?? STOP_STYLE.METRO;
   const customIcon = L.divIcon({
     className: 'custom-div-icon',
@@ -127,6 +140,10 @@ function createStationMarker(station: Station, onSelect: (s: Station) => void): 
 
   marker.on('click', (e: L.LeafletMouseEvent) => {
     L.DomEvent.stopPropagation(e);
+    if (pickMode === 'from' || pickMode === 'to') {
+      onPick(station, pickMode);
+      return;
+    }
     onSelect(station);
   });
 
@@ -144,19 +161,127 @@ function createStationMarker(station: Station, onSelect: (s: Station) => void): 
 }
 
 /** All station markers on the map (not inside LayersControl — avoids overlay registration bugs) */
+function MapRoutePicker({
+  pickMode,
+  pickStations,
+  onPickStation,
+}: {
+  pickMode: RoutePickMode;
+  pickStations: Station[];
+  onPickStation: (station: Station, mode: 'from' | 'to') => void;
+}) {
+  const map = useMap();
+  const pickModeRef = useRef(pickMode);
+  const onPickRef = useRef(onPickStation);
+  const stationsRef = useRef(pickStations);
+  pickModeRef.current = pickMode;
+  onPickRef.current = onPickStation;
+  stationsRef.current = pickStations;
+
+  useMapEvents({
+    click(e) {
+      const mode = pickModeRef.current;
+      if (mode !== 'from' && mode !== 'to') return;
+
+      const { lat, lng } = e.latlng;
+      const nearest = findNearestStation(stationsRef.current, lat, lng);
+      if (nearest) onPickRef.current(nearest.station, mode);
+    },
+  });
+
+  useEffect(() => {
+    const el = map.getContainer();
+    if (pickMode) {
+      el.classList.add('map-pick-mode');
+      el.style.cursor = 'crosshair';
+    } else {
+      el.classList.remove('map-pick-mode');
+      el.style.cursor = '';
+    }
+    return () => {
+      el.classList.remove('map-pick-mode');
+      el.style.cursor = '';
+    };
+  }, [pickMode, map]);
+
+  return null;
+}
+
+function RouteEndpointMarkers({
+  routeFrom,
+  routeTo,
+}: {
+  routeFrom: Station | null;
+  routeTo: Station | null;
+}) {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+
+  useEffect(() => {
+    const group = L.layerGroup();
+    layerRef.current = group;
+    map.addLayer(group);
+    return () => {
+      map.removeLayer(group);
+      layerRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const group = layerRef.current;
+    if (!group) return;
+    group.clearLayers();
+
+    const addPin = (station: Station, color: string, label: string) => {
+      const icon = L.divIcon({
+        className: 'route-endpoint-icon',
+        html: `
+          <div class="flex flex-col items-center pointer-events-none">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold font-display shadow-lg border-2 border-slate-950"
+                 style="background-color: ${color}; box-shadow: 0 0 14px ${color}99">
+              ${label}
+            </div>
+            <div class="mt-0.5 px-1.5 py-0.5 rounded bg-slate-950/90 text-[9px] text-slate-100 font-medium max-w-[120px] truncate border border-slate-700">
+              ${escapeHtml(station.name)}
+            </div>
+          </div>
+        `,
+        iconSize: [120, 48],
+        iconAnchor: [60, 22],
+      });
+      group.addLayer(
+        L.marker([station.latitude, station.longitude], { icon, zIndexOffset: 1000 })
+      );
+    };
+
+    if (routeFrom) addPin(routeFrom, '#10B981', 'A');
+    if (routeTo) addPin(routeTo, '#EF4444', 'B');
+  }, [routeFrom, routeTo]);
+
+  return null;
+}
+
 function AllStationsMarkers({
   stations,
   visibleTypes,
   onSelectStation,
+  routePickMode,
+  onPickStation,
 }: {
   stations: Station[];
   visibleTypes: Set<StopType>;
   onSelectStation: (station: Station) => void;
+  routePickMode: RoutePickMode;
+  onPickStation: (station: Station, mode: 'from' | 'to') => void;
 }) {
   const map = useMap();
   const clusterRef = useRef<MarkerClusterGroup | null>(null);
   const onSelectRef = useRef(onSelectStation);
+  const pickModeRef = useRef(routePickMode);
+  const onPickRef = useRef(onPickStation);
   onSelectRef.current = onSelectStation;
+  pickModeRef.current = routePickMode;
+  onPickRef.current = onPickStation;
 
   const filtered = useMemo(() => {
     const byType = stations.filter((s) => visibleTypes.has(s.stop_type));
@@ -190,9 +315,16 @@ function AllStationsMarkers({
     clusterGroup.clearLayers();
     filtered.forEach((station) => {
       if (!Number.isFinite(station.latitude) || !Number.isFinite(station.longitude)) return;
-      clusterGroup.addLayer(createStationMarker(station, (s) => onSelectRef.current(s)));
+      clusterGroup.addLayer(
+        createStationMarker(
+          station,
+          (s) => onSelectRef.current(s),
+          pickModeRef.current,
+          (s, mode) => onPickRef.current(s, mode)
+        )
+      );
     });
-  }, [filtered]);
+  }, [filtered, routePickMode]);
 
   return null;
 }
@@ -202,6 +334,11 @@ export default function Map({
   selectedStation,
   activeRouteLegs,
   activeRoutePoints,
+  routeFrom,
+  routeTo,
+  routePickMode,
+  onPickStation,
+  pickStations,
 }: MapProps) {
   const [zoom, setZoom] = useState(13);
   const [visibleTypes, setVisibleTypes] = useState<Set<StopType>>(() => new Set(DEFAULT_MAP_TYPES));
@@ -214,6 +351,7 @@ export default function Map({
   });
 
   const stations = response?.status === 'success' ? (response.data as Station[]) : [];
+  const stationsForPick = pickStations.length > 0 ? pickStations : stations;
   const isError = isQueryError || response?.status === 'error';
 
   const countsByType = useMemo(() => {
@@ -287,11 +425,36 @@ export default function Map({
           stations={stations}
           visibleTypes={visibleTypes}
           onSelectStation={onSelectStation}
+          routePickMode={routePickMode}
+          onPickStation={onPickStation}
         />
+
+        <MapRoutePicker
+          pickMode={routePickMode}
+          pickStations={stationsForPick}
+          onPickStation={onPickStation}
+        />
+        <RouteEndpointMarkers routeFrom={routeFrom} routeTo={routeTo} />
 
         <MapViewportController onZoomChange={setZoom} />
         <RefocusController selectedStation={selectedStation} />
       </MapContainer>
+
+      {routePickMode && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
+          <div className="glass-panel px-4 py-2 rounded-lg border border-brand-cyan/40 text-xs text-slate-100 shadow-lg">
+            {routePickMode === 'from' ? (
+              <span>
+                Click the map or a station marker to set <strong className="text-emerald-400">Start</strong>
+              </span>
+            ) : (
+              <span>
+                Click the map or a station marker to set <strong className="text-red-400">Destination</strong>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 z-[1000] glass-panel rounded-lg p-3 text-[11px] text-slate-300 max-w-[260px]">
         <h4 className="font-bold text-slate-100 flex items-center gap-1.5 mb-2">
@@ -309,7 +472,7 @@ export default function Map({
         )}
 
         <p className="text-[10px] text-slate-500 mb-2">
-          Bus stops are off by default (too many). Toggle types below:
+          All station layers are off by default. Toggle types below:
         </p>
         <ul className="space-y-1.5 text-[10px]">
           {(ALL_STOP_TYPES as StopType[]).map((type) => (

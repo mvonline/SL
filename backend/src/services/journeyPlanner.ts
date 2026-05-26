@@ -10,11 +10,22 @@ export interface TransitRouteLeg {
   geometry: [number, number][];
 }
 
+export type TransitVehicleType =
+  | 'WALK'
+  | 'METRO'
+  | 'TRAIN'
+  | 'BUS'
+  | 'FERRY'
+  | 'TRAM'
+  | 'TRANSFER';
+
 export interface TransitRouteInstruction {
   text: string;
   durationMin?: number;
   line?: string;
   kind?: 'walk' | 'board' | 'ride' | 'transfer' | 'arrive';
+  vehicle?: TransitVehicleType;
+  color?: string;
 }
 
 export interface TransitRouteResult {
@@ -184,6 +195,18 @@ function isWalkingLeg(leg: JpLeg): boolean {
   return cls === 99 || productName.includes('foot') || productName.includes('walk');
 }
 
+function vehicleTypeFromLeg(leg: JpLeg): TransitVehicleType {
+  if (isWalkingLeg(leg)) return 'WALK';
+  const productName = (leg.transportation?.product?.name || '').toLowerCase();
+  if (productName.includes('tunnelbana') || productName.includes('metro')) return 'METRO';
+  if (productName.includes('tåg') || productName.includes('train') || productName.includes('pendel'))
+    return 'TRAIN';
+  if (productName.includes('buss') || productName.includes('bus')) return 'BUS';
+  if (productName.includes('ferry') || productName.includes('båt')) return 'FERRY';
+  if (productName.includes('tram') || productName.includes('spårvagn')) return 'TRAM';
+  return 'TRAIN';
+}
+
 function lineColor(leg: JpLeg): string {
   if (isWalkingLeg(leg)) return LINE_COLORS.walk;
   const productName = (leg.transportation?.product?.name || '').toLowerCase();
@@ -198,11 +221,24 @@ function lineColor(leg: JpLeg): string {
 function lineLabel(leg: JpLeg): string {
   if (isWalkingLeg(leg)) return 'Walk';
   const t = leg.transportation;
-  const line = t?.disassembledName || t?.number || t?.name || 'Transit';
   const product = t?.product?.name || '';
+  const number = t?.number?.trim();
+  const disassembled = t?.disassembledName?.trim();
+  const lineDisplay = String(
+    (t?.properties as { lineDisplay?: string } | undefined)?.lineDisplay || ''
+  ).toUpperCase();
+
+  // ITP = internal SL/HACON line-display code, not a real line name — prefer number/product
+  let line: string;
+  if (lineDisplay === 'ITP' || disassembled?.toUpperCase() === 'ITP') {
+    line = number || product || 'Transit';
+  } else {
+    line = disassembled || number || t?.name || 'Transit';
+  }
+
   const dest = t?.destination?.name;
   if (dest) return `${line} → ${dest}`;
-  if (product) return `${line} (${product})`;
+  if (product && !line.includes(product)) return `${line} (${product})`;
   return line;
 }
 
@@ -241,15 +277,21 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
       instructions.push({
         kind: 'walk',
         line: 'Walk',
+        vehicle: 'WALK',
+        color: LINE_COLORS.walk,
         text: `Walk to ${to} (${durationMin ?? '?'} min)`,
         durationMin,
       });
     } else {
+      const vehicle = vehicleTypeFromLeg(leg);
+      const color = lineColor(leg);
       const prev = jpLegs[index - 1];
       if (index > 0 && prev && !isWalkingLeg(prev)) {
         instructions.push({
           kind: 'transfer',
           line: 'Change',
+          vehicle: 'TRANSFER',
+          color: LINE_COLORS.walk,
           text: `Change at ${from} — switch lines`,
         });
       }
@@ -257,6 +299,8 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
       instructions.push({
         kind: 'board',
         line,
+        vehicle,
+        color,
         text: destHeadsign
           ? `Take ${line} towards ${destHeadsign}`
           : `Take ${line} from ${from}`,
@@ -265,6 +309,8 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
       instructions.push({
         kind: 'arrive',
         line,
+        vehicle,
+        color,
         text: `Get off at ${to}`,
       });
     }
