@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiClient } from './services/api.js';
 import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
@@ -7,7 +7,7 @@ import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
 import { TripStepIcon, VEHICLE_LABELS } from './components/TripStepIcon.tsx';
 import { 
-  Navigation, Train, Bus, Anchor, LogOut, RefreshCw, BarChart3, 
+  Navigation, Train, LogOut, RefreshCw, BarChart3, 
   MapPin, AlertTriangle, User, ShieldAlert, CheckCircle,
   TrendingUp, Clock, Server
 } from 'lucide-react';
@@ -30,7 +30,6 @@ export default function App() {
   const [routeFrom, setRouteFrom] = useState<Station | null>(null);
   const [routeTo, setRouteTo] = useState<Station | null>(null);
   const [travelMode, setTravelMode] = useState<'walking' | 'driving' | 'transit'>('transit');
-  const [routingError, setRoutingError] = useState<string | null>(null);
   const [routePickMode, setRoutePickMode] = useState<RoutePickMode>(null);
 
   // Sync animation state
@@ -41,7 +40,6 @@ export default function App() {
   const { 
     data: departuresRes, 
     isFetching: isFetchingDepartures,
-    error: departuresErr 
   } = useQuery({
     queryKey: ['departures', selectedStation?.id],
     queryFn: () => ApiClient.getLiveDepartures(selectedStation!.id),
@@ -53,7 +51,6 @@ export default function App() {
   const {
     data: routingRes,
     isFetching: isFetchingRoute,
-    refetch: triggerRouting
   } = useQuery({
     queryKey: ['routing', routeFrom?.id, routeTo?.id, travelMode],
     queryFn: () =>
@@ -205,7 +202,7 @@ export default function App() {
   }, [routingRes]);
 
   const activeLegs: RouteLeg[] = routingPlan?.legs ?? [];
-  const activePoints: [number, number][] = routingPlan?.geometry ?? null;
+  const activePoints: [number, number][] | null = routingPlan?.geometry ?? null;
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">

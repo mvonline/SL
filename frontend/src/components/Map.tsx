@@ -376,8 +376,6 @@ export default function Map({
     return groupStationsByName(byType).length;
   }, [stations, visibleTypes]);
 
-  const hasRoute = !!(activeRoutePoints || (activeRouteLegs && activeRouteLegs.length > 0));
-
   return (
     <div className="relative w-full h-full">
       <MapContainer
