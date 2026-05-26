@@ -33,11 +33,14 @@ Pull and run with Redis URL and env vars from `render.yaml`.
 
 1. Repo **Settings** → **Pages** → **Source**: **GitHub Actions**.
 2. Push to `main` / `master` — workflow `Deploy GitHub Pages` runs automatically.
-3. **Settings** → **Secrets and variables** → **Actions** → **Variables**:
-   - `VITE_API_BASE` = `https://sthlmtransit-api.onrender.com/api`  
-     (use your real Render URL + `/api`)
+3. **Settings** → **Secrets and variables** → **Actions** → **Variables** (required for live API):
+   - Name: `VITE_API_BASE`
+   - Value: `https://sthlmtransit-api.onrender.com/api`  
+     (use your real Render URL — must end with `/api`)
 
-Rebuild Pages after changing `VITE_API_BASE` (re-run workflow or push a commit).
+4. Re-run **Actions → Deploy GitHub Pages** (or push a commit).
+
+Without `VITE_API_BASE`, the site still shows **offline stations** on the map but routing, departures, and login need the backend.
 
 ## 3. Local development
 

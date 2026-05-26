@@ -4,6 +4,8 @@ import { ApiClient } from './services/api.js';
 import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
 import { asText } from './utils/safeText.js';
 import { assignVehicleLegColors, syncInstructionColors } from './utils/routeLegColors.js';
+import { isApiConfigured, isGithubPagesHost } from './config/apiBase.js';
+import { loadMapStations } from './services/stationsLoader.js';
 import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
 import { TripStepIcon, VEHICLE_LABELS } from './components/TripStepIcon.tsx';
@@ -75,6 +77,12 @@ export default function App() {
     refetchInterval: 8000,
   });
 
+  const { data: mapStationsRes } = useQuery({
+    queryKey: ['stations', 'map'],
+    queryFn: loadMapStations,
+    staleTime: 60_000,
+  });
+
   const { data: allStationsRes } = useQuery({
     queryKey: ['stations', 'all'],
     queryFn: () => ApiClient.getStations(),
@@ -90,7 +98,14 @@ export default function App() {
   };
 
   const allStations =
-    allStationsRes?.status === 'success' ? (allStationsRes.data as Station[]) : [];
+    allStationsRes?.status === 'success'
+      ? (allStationsRes.data as Station[])
+      : mapStationsRes?.status === 'success'
+        ? mapStationsRes.data
+        : [];
+
+  const showApiConfigBanner =
+    isGithubPagesHost() && !isApiConfigured() && import.meta.env.PROD;
 
   // 4. Seeding Sync Mutation
   const syncMutation = useMutation({
@@ -215,6 +230,20 @@ export default function App() {
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">
       
+      {showApiConfigBanner && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-2xl px-4">
+          <div className="flex items-start gap-3 p-3.5 bg-slate-800/95 text-slate-100 rounded-xl shadow-2xl border border-amber-500/40 text-xs">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
+            <div>
+              <span className="font-bold text-amber-300">Live API not connected.</span>{' '}
+              Map uses offline stations. In GitHub → Settings → Secrets and variables → Actions,
+              add variable <code className="text-brand-cyan">VITE_API_BASE</code> = your Render URL
+              + <code className="text-brand-cyan">/api</code>, then re-run the Pages deploy workflow.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Graceful Degradation Amber Notification Banner */}
       {showAmberBanner && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-xl px-4 animate-bounce">

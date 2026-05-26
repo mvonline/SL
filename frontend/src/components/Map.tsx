@@ -10,7 +10,7 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { Station, RouteLeg } from '../types/index.js';
-import { ApiClient } from '../services/api.js';
+import { loadMapStations } from '../services/stationsLoader.js';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Info, Layers } from 'lucide-react';
 import { groupStationsByName, stationNameKey } from '../utils/groupStationsByName.js';
@@ -345,14 +345,16 @@ export default function Map({
 
   const { data: response, isFetching, isError: isQueryError } = useQuery({
     queryKey: ['stations', 'map'],
-    queryFn: () => ApiClient.getMapStations(),
+    queryFn: loadMapStations,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
-  const stations = response?.status === 'success' ? (response.data as Station[]) : [];
+  const stations = response?.status === 'success' ? response.data : [];
   const stationsForPick = pickStations.length > 0 ? pickStations : stations;
   const isError = isQueryError || response?.status === 'error';
+  const stationsHint = response?.message;
+  const usingFallback = response?.source === 'fallback';
 
   const countsByType = useMemo(() => {
     const counts: Record<StopType, number> = { METRO: 0, TRAIN: 0, BUS: 0, FERRY: 0 };
@@ -461,11 +463,16 @@ export default function Map({
         </h4>
 
         {isError && (
-          <p className="text-[10px] text-red-400 mb-2">Could not load stations. Is the API running?</p>
+          <p className="text-[10px] text-red-400 mb-2">
+            {stationsHint || 'Could not load stations.'}
+          </p>
         )}
-        {stations.length === 0 && !isFetching && (
+        {usingFallback && !isError && (
+          <p className="text-[10px] text-amber-400/90 mb-2">{stationsHint}</p>
+        )}
+        {stations.length === 0 && !isFetching && !isError && (
           <p className="text-[10px] text-amber-400/90 mb-2">
-            No stations in database — use Admin sync in the sidebar.
+            No stations available.
           </p>
         )}
 

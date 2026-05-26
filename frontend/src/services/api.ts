@@ -1,11 +1,20 @@
 import type { Station } from '../types/index.js';
+import { getApiBase, isApiConfigured } from '../config/apiBase.js';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api';
+const API_BASE = getApiBase();
 
 /**
  * Custom wrapper around fetch to append JWT tokens and handle standard parsing.
  */
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<{ status: 'success' | 'error'; source?: string; data?: T; warnings?: string[]; message?: string }> {
+  if (!isApiConfigured()) {
+    return {
+      status: 'error',
+      message:
+        'API URL not configured. Set GitHub variable VITE_API_BASE to your backend (e.g. https://sthlmtransit-api.onrender.com/api).',
+    };
+  }
+
   const token = localStorage.getItem('transit_token');
   const headers = {
     'Content-Type': 'application/json',
