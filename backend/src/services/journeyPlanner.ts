@@ -8,6 +8,7 @@ export interface TransitRouteLeg {
   color: string;
   style: 'solid' | 'dotted';
   geometry: [number, number][];
+  vehicle?: TransitVehicleType;
 }
 
 export type TransitVehicleType =
@@ -68,14 +69,21 @@ interface JpJourney {
   legs?: JpLeg[];
 }
 
-const LINE_COLORS: Record<string, string> = {
-  metro: '#EF4444',
-  train: '#EC4899',
-  bus: '#06B6D4',
-  ferry: '#3B82F6',
-  tram: '#10B981',
-  walk: '#9CA3AF',
+/** Base hue per mode; extra shades when the same mode appears more than once (e.g. two buses) */
+const VEHICLE_SHADES: Record<TransitVehicleType, string[]> = {
+  WALK: ['#9CA3AF'],
+  METRO: ['#EF4444', '#DC2626', '#F87171', '#B91C1C'],
+  TRAIN: ['#EC4899', '#DB2777', '#F472B6', '#BE185D'],
+  BUS: ['#06B6D4', '#0891B2', '#22D3EE', '#0E7490'],
+  FERRY: ['#3B82F6', '#2563EB', '#60A5FA', '#1D4ED8'],
+  TRAM: ['#10B981', '#059669', '#34D399', '#047857'],
+  TRANSFER: ['#F59E0B'],
 };
+
+function colorForVehicle(vehicle: TransitVehicleType, sameModeIndex: number): string {
+  const shades = VEHICLE_SHADES[vehicle] ?? VEHICLE_SHADES.TRAIN;
+  return shades[sameModeIndex % shades.length];
+}
 
 function stopLabel(point?: JpLeg['origin']): string {
   if (!point) return 'stop';
@@ -207,16 +215,6 @@ function vehicleTypeFromLeg(leg: JpLeg): TransitVehicleType {
   return 'TRAIN';
 }
 
-function lineColor(leg: JpLeg): string {
-  if (isWalkingLeg(leg)) return LINE_COLORS.walk;
-  const productName = (leg.transportation?.product?.name || '').toLowerCase();
-  if (productName.includes('tunnelbana') || productName.includes('metro')) return LINE_COLORS.metro;
-  if (productName.includes('tåg') || productName.includes('train')) return LINE_COLORS.train;
-  if (productName.includes('buss') || productName.includes('bus')) return LINE_COLORS.bus;
-  if (productName.includes('ferry') || productName.includes('båt')) return LINE_COLORS.ferry;
-  if (productName.includes('tram') || productName.includes('spårvagn')) return LINE_COLORS.tram;
-  return LINE_COLORS.metro;
-}
 
 function lineLabel(leg: JpLeg): string {
   if (isWalkingLeg(leg)) return 'Walk';
@@ -251,6 +249,7 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
   const legs: TransitRouteLeg[] = [];
   const instructions: TransitRouteInstruction[] = [];
   const jpLegs = journey.legs ?? [];
+  const modeCounts: Partial<Record<TransitVehicleType, number>> = {};
 
   jpLegs.forEach((leg, index) => {
     const walking = isWalkingLeg(leg);
@@ -260,6 +259,11 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
     const durationMin = leg.duration ? Math.max(1, Math.round(leg.duration / 60)) : undefined;
     const geometry = mapCoords(leg.coords);
 
+    const vehicle: TransitVehicleType = walking ? 'WALK' : vehicleTypeFromLeg(leg);
+    const modeIndex = modeCounts[vehicle] ?? 0;
+    const color = colorForVehicle(vehicle, modeIndex);
+    if (!walking) modeCounts[vehicle] = modeIndex + 1;
+
     if (geometry.length === 0 && leg.origin?.coord && leg.destination?.coord) {
       geometry.push([leg.origin.coord[0], leg.origin.coord[1]]);
       geometry.push([leg.destination.coord[0], leg.destination.coord[1]]);
@@ -268,9 +272,10 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
     legs.push({
       type: walking ? 'walking' : 'transit',
       line,
-      color: lineColor(leg),
+      color,
       style: walking ? 'dotted' : 'solid',
       geometry,
+      vehicle,
     });
 
     if (walking) {
@@ -278,20 +283,18 @@ function parseJourney(journey: JpJourney): TransitRouteResult {
         kind: 'walk',
         line: 'Walk',
         vehicle: 'WALK',
-        color: LINE_COLORS.walk,
+        color,
         text: `Walk to ${to} (${durationMin ?? '?'} min)`,
         durationMin,
       });
     } else {
-      const vehicle = vehicleTypeFromLeg(leg);
-      const color = lineColor(leg);
       const prev = jpLegs[index - 1];
       if (index > 0 && prev && !isWalkingLeg(prev)) {
         instructions.push({
           kind: 'transfer',
           line: 'Change',
           vehicle: 'TRANSFER',
-          color: LINE_COLORS.walk,
+          color: colorForVehicle('TRANSFER', 0),
           text: `Change at ${from} — switch lines`,
         });
       }

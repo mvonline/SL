@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApiClient } from './services/api.js';
 import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
 import { asText } from './utils/safeText.js';
+import { assignVehicleLegColors, syncInstructionColors } from './utils/routeLegColors.js';
 import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
 import { TripStepIcon, VEHICLE_LABELS } from './components/TripStepIcon.tsx';
@@ -201,7 +202,14 @@ export default function App() {
     };
   }, [routingRes]);
 
-  const activeLegs: RouteLeg[] = routingPlan?.legs ?? [];
+  const activeLegs: RouteLeg[] = useMemo(
+    () => assignVehicleLegColors(routingPlan?.legs ?? []),
+    [routingPlan?.legs]
+  );
+  const tripInstructions: RouteInstruction[] = useMemo(
+    () => syncInstructionColors(routingPlan?.instructions ?? [], activeLegs),
+    [routingPlan?.instructions, activeLegs]
+  );
   const activePoints: [number, number][] | null = routingPlan?.geometry ?? null;
 
   return (
@@ -416,7 +424,7 @@ export default function App() {
                   </p>
                 )}
 
-                {routingPlan && routingPlan.instructions.length > 0 && (
+                {routingPlan && tripInstructions.length > 0 && (
                   <div className="mt-3.5 max-h-[200px] overflow-y-auto border border-slate-800 rounded-lg bg-slate-900/30 p-2.5 space-y-2">
                     <div className="text-[11px] font-bold text-slate-400 flex items-center justify-between pb-1.5 border-b border-slate-800">
                       <span>Trip plan</span>
@@ -429,7 +437,7 @@ export default function App() {
                           : ''}
                       </span>
                     </div>
-                    {routingPlan.instructions.map((step, idx) => {
+                    {tripInstructions.map((step, idx) => {
                       const vehicle =
                         step.vehicle ??
                         (step.kind === 'walk'

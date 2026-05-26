@@ -29,6 +29,7 @@ export interface RouteLeg {
   color: string;
   style: 'solid' | 'dotted';
   geometry: [number, number][];
+  vehicle?: RouteVehicleType;
 }
 
 export type RouteVehicleType =

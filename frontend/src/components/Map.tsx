@@ -407,7 +407,7 @@ export default function Map({
           )}
 
           {activeRouteLegs?.map((leg, index) => (
-            <LayersControl.Overlay key={`leg-${index}`} checked name={`Transit: ${leg.line}`}>
+            <LayersControl.Overlay key={`leg-${index}`} checked name={`${leg.line}`}>
               <Polyline
                 positions={leg.geometry}
                 color={leg.color}
