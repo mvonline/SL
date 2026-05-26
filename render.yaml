@@ -1,0 +1,41 @@
+# Render Blueprint — deploy backend + Redis from GitHub
+# Dashboard: New → Blueprint → connect this repo
+# Docs: docs/DEPLOYMENT.md
+
+services:
+  - type: redis
+    name: transit-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  - type: web
+    name: sthlmtransit-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: transit-redis
+          property: connectionString
+      - key: SQLITE_PATH
+        value: /data/transit.db
+      - key: LOG_DIR
+        value: /var/log/transit
+      - key: JWT_SECRET
+        generateValue: true
+      # Set to your GitHub Pages URL, e.g. https://username.github.io/sl/
+      - key: FRONTEND_URL
+        sync: false
+    disk:
+      name: transit-sqlite
+      mountPath: /data
+      sizeGB: 1

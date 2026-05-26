@@ -1,5 +1,7 @@
 # Build the React/Vite frontend and publish to GitHub Pages.
-# Enable in repo: Settings → Pages → Source: GitHub Actions
+# Backend is NOT on GitHub — deploy via render.yaml (see docs/DEPLOYMENT.md).
+# Set repo variable VITE_API_BASE = https://<your-api-host>/api
+# Enable: Settings → Pages → Source: GitHub Actions
 
 name: Deploy GitHub Pages
 

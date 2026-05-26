@@ -14,6 +14,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: development
     container_name: transit-backend
     ports:
       - "3000:3000"

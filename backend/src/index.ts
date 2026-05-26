@@ -23,10 +23,20 @@ fastify.get('/health', async () => {
 // Bootstrap Server
 const startServer = async () => {
   try {
-    // 1. Register CORS Middleware to allow communication from React frontend (port 5173)
+    // 1. CORS — local dev, GitHub Pages, and optional FRONTEND_URL
+    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '');
     await fastify.register(cors, {
-      origin: '*', // For local container dev. Adjust to specific hosts in production.
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        if (origin === 'http://localhost:5173' || origin === 'http://127.0.0.1:5173') {
+          return cb(null, true);
+        }
+        if (frontendUrl && origin === frontendUrl) return cb(null, true);
+        if (/^https:\/\/[\w-]+\.github\.io$/.test(origin)) return cb(null, true);
+        if (frontendUrl && origin.startsWith(`${frontendUrl}/`)) return cb(null, true);
+        cb(null, false);
+      },
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     });
 
     // 2. Register JWT Authentication plugin
