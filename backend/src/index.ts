@@ -23,17 +23,24 @@ fastify.get('/health', async () => {
 // Bootstrap Server
 const startServer = async () => {
   try {
-    // 1. CORS — local dev, GitHub Pages, and optional FRONTEND_URL
-    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '');
+    // 1. CORS — local dev, GitHub Pages, and FRONTEND_URL (origin only; path e.g. /SL/ is ignored)
+    const frontendOrigin = (() => {
+      const raw = process.env.FRONTEND_URL?.trim();
+      if (!raw) return undefined;
+      try {
+        return new URL(raw).origin;
+      } catch {
+        return raw.replace(/\/$/, '');
+      }
+    })();
     await fastify.register(cors, {
       origin: (origin, cb) => {
         if (!origin) return cb(null, true);
         if (origin === 'http://localhost:5173' || origin === 'http://127.0.0.1:5173') {
           return cb(null, true);
         }
-        if (frontendUrl && origin === frontendUrl) return cb(null, true);
+        if (frontendOrigin && origin === frontendOrigin) return cb(null, true);
         if (/^https:\/\/[\w-]+\.github\.io$/.test(origin)) return cb(null, true);
-        if (frontendUrl && origin.startsWith(`${frontendUrl}/`)) return cb(null, true);
         cb(null, false);
       },
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

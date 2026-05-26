@@ -51,7 +51,7 @@ export async function loadMapStations(): Promise<StationsLoadResult> {
     const fallback = await loadFallbackStations();
     const hint = getApiBase()
       ? 'Backend unreachable — showing offline station list.'
-      : 'Set VITE_API_BASE in GitHub repo variables to connect the live API.';
+      : 'Set apiBase in public/config.json or VITE_API_BASE in GitHub repo variables.';
     return {
       status: 'success',
       data: fallback,

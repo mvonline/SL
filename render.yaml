@@ -32,7 +32,7 @@ services:
         value: /var/log/transit
       - key: JWT_SECRET
         generateValue: true
-      # Set to your GitHub Pages URL, e.g. https://username.github.io/sl/
+      # Site origin only, e.g. https://vafa.one (not https://vafa.one/SL/)
       - key: FRONTEND_URL
         sync: false
     disk:

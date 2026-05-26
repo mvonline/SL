@@ -4,7 +4,7 @@ import { ApiClient } from './services/api.js';
 import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
 import { asText } from './utils/safeText.js';
 import { assignVehicleLegColors, syncInstructionColors } from './utils/routeLegColors.js';
-import { isApiConfigured, isGithubPagesHost } from './config/apiBase.js';
+import { isApiConfigured } from './config/apiBase.js';
 import { loadMapStations } from './services/stationsLoader.js';
 import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
@@ -104,8 +104,7 @@ export default function App() {
         ? mapStationsRes.data
         : [];
 
-  const showApiConfigBanner =
-    isGithubPagesHost() && !isApiConfigured() && import.meta.env.PROD;
+  const showApiConfigBanner = import.meta.env.PROD && !isApiConfigured();
 
   // 4. Seeding Sync Mutation
   const syncMutation = useMutation({
@@ -236,9 +235,10 @@ export default function App() {
             <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
             <div>
               <span className="font-bold text-amber-300">Live API not connected.</span>{' '}
-              Map uses offline stations. In GitHub → Settings → Secrets and variables → Actions,
-              add variable <code className="text-brand-cyan">VITE_API_BASE</code> = your Render URL
-              + <code className="text-brand-cyan">/api</code>, then re-run the Pages deploy workflow.
+              Map uses offline stations. Set <code className="text-brand-cyan">apiBase</code> in{' '}
+              <code className="text-brand-cyan">frontend/public/config.json</code> to your Render URL
+              (e.g. <code className="text-brand-cyan">https://sthlmtransit-api.onrender.com/api</code>)
+              and redeploy, or use GitHub variable <code className="text-brand-cyan">VITE_API_BASE</code>.
             </div>
           </div>
         </div>
