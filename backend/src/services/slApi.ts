@@ -1,5 +1,7 @@
 import { CostAnalyser } from './costAnalyser.js';
-import { STOCKHOLM_STATIONS_SEED } from '../data/stockholmStationsSeed.js';
+import stationsSeed from '../data/stockholmStationsSeed.json' with { type: 'json' };
+
+const STOCKHOLM_STATIONS_SEED: ThinnedStation[] = stationsSeed as ThinnedStation[];
 
 const SL_API_BASE = 'https://transport.integration.sl.se/v1';
 
@@ -200,7 +202,7 @@ export const SlApiService = {
         'SL API unavailable or incomplete. Using expanded greater-Stockholm static seed.',
         err
       );
-      return STOCKHOLM_STATIONS_SEED.map((s) => ({ ...s }));
+      return STOCKHOLM_STATIONS_SEED.map((s: ThinnedStation) => ({ ...s }));
     }
   },
 
@@ -215,7 +217,9 @@ export const SlApiService = {
       console.warn(`SL Live API Departures failed for site: ${siteId}. Using mock stream.`, err);
 
       const station =
-        STOCKHOLM_STATIONS_SEED.find((s) => s.id === siteId || siteId.endsWith(s.id)) || {
+        STOCKHOLM_STATIONS_SEED.find(
+          (s: ThinnedStation) => s.id === siteId || siteId.endsWith(s.id)
+        ) || {
           name: 'Stockholm Stop',
           stop_type: 'METRO',
         };

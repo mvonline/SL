@@ -52,11 +52,18 @@ interface JpLeg {
     number?: string;
     destination?: { name?: string };
     product?: { class?: number; name?: string };
+    properties?: { lineDisplay?: string };
   };
-  origin?: { disassembledName?: string; name?: string; parent?: { disassembledName?: string; name?: string } };
+  origin?: {
+    disassembledName?: string;
+    name?: string;
+    coord?: [number, number];
+    parent?: { disassembledName?: string; name?: string };
+  };
   destination?: {
     disassembledName?: string;
     name?: string;
+    coord?: [number, number];
     parent?: { disassembledName?: string; name?: string };
   };
   coords?: [number, number][];
@@ -222,9 +229,7 @@ function lineLabel(leg: JpLeg): string {
   const product = t?.product?.name || '';
   const number = t?.number?.trim();
   const disassembled = t?.disassembledName?.trim();
-  const lineDisplay = String(
-    (t?.properties as { lineDisplay?: string } | undefined)?.lineDisplay || ''
-  ).toUpperCase();
+  const lineDisplay = String(t?.properties?.lineDisplay || '').toUpperCase();
 
   // ITP = internal SL/HACON line-display code, not a real line name — prefer number/product
   let line: string;
