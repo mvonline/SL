@@ -1,14 +1,28 @@
 /**
- * Generates public/stations-map-fallback.json from backend seed (metro/train/ferry only).
- * Run: node scripts/generate-stations-fallback.mjs
+ * Regenerates public/stations-map-fallback.json (optional).
+ * Requires monorepo with backend/src/data/stockholmStationsSeed.ts.
+ * CI uses the committed JSON in public/ — no generation at build time.
  */
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const seedPath = join(root, '..', 'backend', 'src', 'data', 'stockholmStationsSeed.ts');
+const seedPaths = [
+  join(root, '..', 'backend', 'src', 'data', 'stockholmStationsSeed.ts'),
+  join(root, 'scripts', 'stockholmStationsSeed.ts'),
+];
 const outPath = join(root, 'public', 'stations-map-fallback.json');
+
+const seedPath = seedPaths.find((p) => existsSync(p));
+if (!seedPath) {
+  if (existsSync(outPath)) {
+    console.log('Seed file not found; keeping existing public/stations-map-fallback.json');
+    process.exit(0);
+  }
+  console.error('No seed file and no existing stations-map-fallback.json');
+  process.exit(1);
+}
 
 const src = readFileSync(seedPath, 'utf8');
 const stations = [];
@@ -30,5 +44,6 @@ while ((m = re.exec(src)) !== null) {
   });
 }
 
-writeFileSync(outPath, JSON.stringify(stations, null, 0));
+mkdirSync(dirname(outPath), { recursive: true });
+writeFileSync(outPath, JSON.stringify(stations));
 console.log(`Wrote ${stations.length} stations to ${outPath}`);

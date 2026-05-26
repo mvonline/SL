@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/generate-stations-fallback.mjs && tsc && vite build",
+    "build": "tsc && vite build",
+    "generate:fallback-stations": "node scripts/generate-stations-fallback.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

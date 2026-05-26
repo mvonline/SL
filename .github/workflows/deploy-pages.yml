@@ -37,6 +37,9 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Verify offline stations bundle
+        run: test -f frontend/public/stations-map-fallback.json
+
       - name: Build for GitHub Pages
         working-directory: frontend
         env:
