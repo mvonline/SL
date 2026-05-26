@@ -42,6 +42,8 @@ Pull and run with Redis URL and env vars from `render.yaml`.
 
 Without `VITE_API_BASE`, the site still shows **offline stations** on the map but routing, departures, and login need the backend.
 
+The file `frontend/public/stations-map-fallback.json` must be committed to git (CI does not read the backend seed). To refresh it locally: `npm run generate:fallback-stations` from `frontend/` when the full monorepo is present.
+
 ## 3. Local development
 
 ```bash
