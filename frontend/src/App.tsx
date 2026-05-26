@@ -1,30 +1,18 @@
-import React, { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiClient } from './services/api.js';
 import { Station, Departure, RouteLeg, RouteInstruction, RouteVehicleType } from './types/index.js';
 import { asText } from './utils/safeText.js';
 import { assignVehicleLegColors, syncInstructionColors } from './utils/routeLegColors.js';
-import { isApiConfigured, isGithubPagesHost } from './config/apiBase.js';
+import { isStaticMode } from './config/staticMode.js';
 import { loadMapStations } from './services/stationsLoader.js';
 import Map, { type RoutePickMode } from './components/Map.tsx';
 import StationAutocomplete from './components/StationAutocomplete.tsx';
 import { TripStepIcon, VEHICLE_LABELS } from './components/TripStepIcon.tsx';
-import { 
-  Navigation, Train, LogOut, RefreshCw, BarChart3, 
-  MapPin, AlertTriangle, User, ShieldAlert, CheckCircle,
-  TrendingUp, Clock, Server
-} from 'lucide-react';
+import { Navigation, Train, RefreshCw, MapPin, AlertTriangle, Clock } from 'lucide-react';
 
 export default function App() {
   const queryClient = useQueryClient();
-  const [token, setToken] = useState<string | null>(localStorage.getItem('transit_token'));
-  const [username, setUsername] = useState<string | null>(localStorage.getItem('transit_username'));
-
-  // Auth form states
-  const [isLogin, setIsLogin] = useState(true);
-  const [authUsername, setAuthUsername] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
 
   // Selected station departures panel state
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
@@ -34,10 +22,6 @@ export default function App() {
   const [routeTo, setRouteTo] = useState<Station | null>(null);
   const [travelMode, setTravelMode] = useState<'walking' | 'driving' | 'transit'>('transit');
   const [routePickMode, setRoutePickMode] = useState<RoutePickMode>(null);
-
-  // Sync animation state
-  const [syncSuccess, setSyncSuccess] = useState(false);
-
 
   // 1. Fetch Real-time Departures for Selected Station (refetches every 12 seconds automatically)
   const { 
@@ -69,24 +53,9 @@ export default function App() {
     enabled: !!routeFrom && !!routeTo,
   });
 
-  // 3. Fetch Admin API statistics & budget costs (refetches every 8 seconds)
-  const { data: statsRes, refetch: refetchStats } = useQuery({
-    queryKey: ['adminStats'],
-    queryFn: () => ApiClient.getAdminStats(7),
-    enabled: !!token,
-    refetchInterval: 8000,
-  });
-
   const { data: mapStationsRes } = useQuery({
     queryKey: ['stations', 'map'],
     queryFn: loadMapStations,
-    staleTime: 60_000,
-  });
-
-  const { data: allStationsRes } = useQuery({
-    queryKey: ['stations', 'all'],
-    queryFn: () => ApiClient.getStations(),
-    enabled: !!token,
     staleTime: 60_000,
   });
 
@@ -97,6 +66,12 @@ export default function App() {
     setSelectedStation(station);
   };
 
+  const { data: allStationsRes } = useQuery({
+    queryKey: ['stations', 'all'],
+    queryFn: () => ApiClient.getStations(),
+    staleTime: 60_000,
+  });
+
   const allStations =
     allStationsRes?.status === 'success'
       ? (allStationsRes.data as Station[])
@@ -104,60 +79,13 @@ export default function App() {
         ? mapStationsRes.data
         : [];
 
-  const showApiConfigBanner =
-    isGithubPagesHost() && !isApiConfigured() && import.meta.env.PROD;
-
-  // 4. Seeding Sync Mutation
-  const syncMutation = useMutation({
-    mutationFn: ApiClient.triggerAdminSync,
-    onSuccess: (data) => {
-      if (data.status === 'success') {
-        setSyncSuccess(true);
-        setTimeout(() => setSyncSuccess(false), 4000);
-        queryClient.invalidateQueries({ queryKey: ['stations'] });
-        refetchStats();
-      }
-    }
-  });
-
-  // Handle Authentication submit
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    if (!authUsername || !authPassword) {
-      setAuthError('All credentials are required.');
-      return;
-    }
-
-    const res = isLogin 
-      ? await ApiClient.login(authUsername, authPassword)
-      : await ApiClient.signup(authUsername, authPassword);
-
-    if (res.status === 'success' && res.data) {
-      const data = res.data as { token: string; username: string };
-      localStorage.setItem('transit_token', data.token);
-      localStorage.setItem('transit_username', data.username);
-      setToken(data.token);
-      setUsername(data.username);
-      setAuthUsername('');
-      setAuthPassword('');
-    } else {
-      setAuthError(res.message || 'Authentication session failed.');
-    }
-  };
-
-  const handleLogout = async () => {
-    await ApiClient.logout();
-    setToken(null);
-    setUsername(null);
-    setSelectedStation(null);
-    setRouteFrom(null);
-    setRouteTo(null);
-  };
-
   // Determine if active departures query triggered a graceful fallback banner alert
-  const departuresData = departuresRes?.status === 'success' ? departuresRes.data : null;
-  const showAmberBanner = departuresRes?.source === 'cache_fallback';
+  const departuresData =
+    departuresRes?.status === 'success'
+      ? (departuresRes.data as Record<string, unknown> | undefined)
+      : null;
+  const showAmberBanner =
+    departuresRes?.source === 'cache_fallback' || (departuresRes?.warnings?.length ?? 0) > 0;
   const departuresList: Departure[] = useMemo(() => {
     const raw = departuresData?.departures;
     if (!Array.isArray(raw)) return [];
@@ -230,20 +158,6 @@ export default function App() {
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">
       
-      {showApiConfigBanner && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-2xl px-4">
-          <div className="flex items-start gap-3 p-3.5 bg-slate-800/95 text-slate-100 rounded-xl shadow-2xl border border-amber-500/40 text-xs">
-            <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
-            <div>
-              <span className="font-bold text-amber-300">Live API not connected.</span>{' '}
-              Map uses offline stations. In GitHub → Settings → Secrets and variables → Actions,
-              add variable <code className="text-brand-cyan">VITE_API_BASE</code> = your Render URL
-              + <code className="text-brand-cyan">/api</code>, then re-run the Pages deploy workflow.
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Dynamic Graceful Degradation Amber Notification Banner */}
       {showAmberBanner && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-xl px-4 animate-bounce">
@@ -275,99 +189,15 @@ export default function App() {
               <h1 className="text-lg font-bold font-display tracking-tight text-white flex items-center gap-1.5">
                 SthlmTransit
               </h1>
-              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold font-display">BFF Circuit Breaker v1</span>
-            </div>
-          </div>
-          {token && (
-            <button 
-              onClick={handleLogout}
-              title="Sign Out" 
-              className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition duration-200"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          )}
-        </header>
-
-        {/* 2. Unauthenticated Login Screen */}
-        {!token ? (
-          <div className="flex-grow p-6 flex flex-col justify-center">
-            <div className="glass-panel rounded-2xl p-6 shadow-2xl glass-card-glow border border-slate-800">
-              <h2 className="text-xl font-bold font-display text-white mb-1.5">
-                {isLogin ? 'Welcome Back' : 'Create Account'}
-              </h2>
-              <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                Log in to sync transit stations, access real-time departures caching, and track budget cost queries.
-              </p>
-
-              <form onSubmit={handleAuthSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Username</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. masoud.vafaei" 
-                    value={authUsername}
-                    onChange={(e) => setAuthUsername(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan rounded-lg text-sm text-slate-200 placeholder-slate-600 outline-none transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Password</label>
-                  <input 
-                    type="password" 
-                    placeholder="••••••••"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan rounded-lg text-sm text-slate-200 placeholder-slate-600 outline-none transition"
-                  />
-                </div>
-
-                {authError && (
-                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-1.5">
-                    <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                <button 
-                  type="submit" 
-                  className="w-full py-2.5 rounded-lg font-semibold text-sm bg-gradient-to-r from-brand-cyan to-brand-purple hover:brightness-110 active:scale-[0.98] text-white shadow-lg transition duration-150"
-                >
-                  {isLogin ? 'Access Dashboard' : 'Complete Signup'}
-                </button>
-              </form>
-
-              <div className="mt-5 text-center text-xs">
-                <button 
-                  onClick={() => { setIsLogin(!isLogin); setAuthError(null); }}
-                  className="text-slate-400 hover:text-brand-cyan underline transition"
-                >
-                  {isLogin ? "Need a new account? Register" : "Already have an account? Sign in"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* 3. Authenticated Workspace */
-          <div className="flex-grow flex flex-col p-5 space-y-5">
-            
-            {/* User details card */}
-            <div className="glass-panel p-3.5 rounded-xl flex items-center justify-between border border-slate-900">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-slate-900 flex items-center justify-center border border-slate-800">
-                  <User className="w-4 h-4 text-brand-cyan" />
-                </div>
-                <div>
-                  <div className="text-xs text-slate-400">Authenticated Session</div>
-                  <div className="text-sm font-bold font-display text-white">{username}</div>
-                </div>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-                Online
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold font-display">
+                {isStaticMode ? 'Offline DB · SL APIs' : 'Multimodal router'}
               </span>
             </div>
+          </div>
+        </header>
 
-            {/* A. Dynamic Travel Routing Planner */}
+        <div className="flex-grow flex flex-col p-5 space-y-5 overflow-y-auto">
+            {/* Travel Routing Planner */}
             <section className="glass-panel p-4 rounded-xl border border-slate-900">
               <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center gap-2">
                 <Navigation className="w-3.5 h-3.5 text-brand-purple" /> Travel Route Planner
@@ -577,79 +407,7 @@ export default function App() {
                 </div>
               )}
             </section>
-
-            {/* C. Cost Analyser Dashboard (Premium Metrics Panel) */}
-            <section className="glass-panel p-4 rounded-xl border border-slate-900">
-              <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <BarChart3 className="w-3.5 h-3.5 text-brand-cyan animate-pulse" /> External API Cost Analyser
-                </span>
-                
-                {/* Manual On-Demand Sync */}
-                <button
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending}
-                  className="p-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-brand-cyan disabled:opacity-50 transition"
-                  title="On-demand station seeding"
-                >
-                  <RefreshCw className={`w-3 h-3 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                </button>
-              </h2>
-
-              {/* Status Message popup */}
-              {syncSuccess && (
-                <div className="mb-3 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold flex items-center gap-1.5 rounded-lg">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  <span>Static station data thinned & synchronized.</span>
-                </div>
-              )}
-
-              {statsRes?.status === 'success' && statsRes.data ? (
-                <div className="grid grid-cols-2 gap-3.5 text-slate-300">
-                  <div className="bg-slate-900/50 p-2.5 rounded-lg border border-slate-900">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5">Api Call Count</div>
-                    <div className="text-base font-bold font-display text-white flex items-center gap-1">
-                      <Server className="w-3.5 h-3.5 text-brand-cyan" />
-                      {asText(statsRes.data.totalCalls, '0')}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/50 p-2.5 rounded-lg border border-slate-900">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5">Budget Spent</div>
-                    <div className="text-base font-bold font-display text-brand-purple flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-brand-purple" />
-                      {asText(statsRes.data.totalCostCredits, '0')}{' '}
-                      <span className="text-[9px] text-slate-500">credits</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/50 p-2.5 rounded-lg border border-slate-900">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5">Avg Latency</div>
-                    <div className="text-base font-bold font-display text-white">
-                      {asText(statsRes.data.averageLatencyMs, '0')}{' '}
-                      <span className="text-[9px] text-slate-500">ms</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/50 p-2.5 rounded-lg border border-slate-900">
-                    <div className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold mb-0.5">Success Rate</div>
-                    <div className="text-base font-bold font-display text-emerald-400">
-                      {asText(statsRes.data.successRatePercentage, '0')}%
-                    </div>
-                  </div>
-
-                  {/* Cache fallbacks count display */}
-                  <div className="col-span-2 text-[10px] text-slate-500 flex justify-between border-t border-slate-900 pt-2 flex-wrap">
-                    <span>Cache Fallback triggers: {asText(statsRes.data.cacheHits, '0')}</span>
-                    <span className="text-brand-cyan">Daily rotated audit logs ACTIVE</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center text-xs text-slate-700 py-3">Awaiting system statistics logs...</div>
-              )}
-            </section>
-          </div>
-        )}
+        </div>
       </aside>
 
       {/* 2. Interactive Map Container Canvas */}
