@@ -1,6 +1,8 @@
 import type { Station } from '../types/index.js';
 import { getApiBase, isApiConfigured } from '../config/apiBase.js';
 
+const API_BASE = getApiBase();
+
 /**
  * Custom wrapper around fetch to append JWT tokens and handle standard parsing.
  */
@@ -21,7 +23,7 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   } as Record<string, string>;
 
   try {
-    const response = await fetch(`${getApiBase()}${endpoint}`, {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers,
     });
